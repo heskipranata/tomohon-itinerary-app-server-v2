@@ -1,6 +1,17 @@
 const jwt = require("jsonwebtoken");
 const authService = require("../services/auth.service");
 
+function buildCookieOptions() {
+  const isProduction = process.env.NODE_ENV === "production";
+
+  return {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+    maxAge: 24 * 60 * 60 * 1000,
+  };
+}
+
 async function loginAdmin(req, res) {
   try {
     const { email, password } = req.body;
@@ -13,12 +24,7 @@ async function loginAdmin(req, res) {
       { expiresIn: "1d" },
     );
 
-    res.cookie("token", token, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "strict",
-      maxAge: 24 * 60 * 60 * 1000
-    } )
+    res.cookie("token", token, buildCookieOptions());
 
     res.json({
       message: "Login successfully",
@@ -28,7 +34,6 @@ async function loginAdmin(req, res) {
         role: admin.role,
       },
     });
-
   } catch (err) {
     res.status(401).json({
       message: err.message,
@@ -36,21 +41,21 @@ async function loginAdmin(req, res) {
   }
 }
 
-async function logoutAdmin (req, res) {
-  try{
+async function logoutAdmin(req, res) {
+  try {
     res.clearCookie("token", {
       httpOnly: true,
-      sameSite: "strict",
-      secure: false
-    })
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      secure: process.env.NODE_ENV === "production",
+    });
 
     res.json({
-      message: "Logout successfully"
-    })
-  }catch(err) {
+      message: "Logout successfully",
+    });
+  } catch (err) {
     res.status(500).json({
       message: err.message,
-    })
+    });
   }
 }
 
@@ -58,4 +63,3 @@ module.exports = {
   loginAdmin,
   logoutAdmin,
 };
-
