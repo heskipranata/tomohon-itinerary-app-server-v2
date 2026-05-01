@@ -6,16 +6,19 @@ const { verifyToken, requireAdmin } = require("../middleware/auth.middleware");
 
 router.post(
   "/objek-wisata/rekomendasi-itinerary",
+  verifyToken,
   wisataController.getItineraryRecommendation,
 );
 
 router.post(
   "/objek-wisata/rekomendasi-itinerary/replacement-preview",
+  verifyToken,
   wisataController.previewItineraryReplacement,
 );
 
 router.post(
   "/objek-wisata/rekomendasi-itinerary/replacement-confirm",
+  verifyToken,
   wisataController.confirmItineraryReplacement,
 );
 
