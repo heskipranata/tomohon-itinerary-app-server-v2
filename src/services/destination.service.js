@@ -54,10 +54,23 @@ async function deleteWisataForAdmin(id) {
   return { id };
 }
 
+async function updateWisataPopularityForAdmin(id, popularityStatus) {
+  const { data, error } = await supabase
+    .from(wisataTable)
+    .update({ popularity_status: popularityStatus })
+    .eq("id", id)
+    .select("*")
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 module.exports = {
   getAllWisataForAdmin,
   getWisataByIdForAdmin,
   createWisataForAdmin,
   updateWisataForAdmin,
   deleteWisataForAdmin,
+  updateWisataPopularityForAdmin,
 };

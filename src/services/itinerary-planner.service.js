@@ -1396,11 +1396,14 @@ async function buildItineraryRecommendation(payload) {
             bestCandidate = pickCandidateFromPool(lunchFallbackPool);
           }
         }
-        if (!bestCandidate) bestCandidate = pickCandidateFromPool(candidatePool);
-        
+        if (!bestCandidate)
+          bestCandidate = pickCandidateFromPool(candidatePool);
+
         // FIX: Pastikan kandidat fallback sudah dibersihkan dari tempat yang pernah dikunjungi
         if (!bestCandidate) {
-          const unvisitedCandidates = orderedCandidates.filter(c => !selectedDestinationIds.has(c.id));
+          const unvisitedCandidates = orderedCandidates.filter(
+            (c) => !selectedDestinationIds.has(c.id),
+          );
           if (candidatePool.length < unvisitedCandidates.length) {
             bestCandidate = pickCandidateFromPool(unvisitedCandidates);
           }
@@ -1679,10 +1682,29 @@ async function buildItineraryRecommendation(payload) {
 
   await applyRoadMetricsToItinerary({ itineraryByDay, userPoint, speed });
 
+  // Calculate travelMetrics from itinerary data
+  const totalDistance = itineraryByDay.reduce(
+    (sum, day) => sum + (day.totalDistance || 0),
+    0,
+  );
+  const totalTravelTime = itineraryByDay.reduce(
+    (sum, day) => sum + (day.totalTime || 0),
+    0,
+  );
+  const totalDays = itineraryByDay.length;
+
   return {
     itineraryByDay,
     simpleItinerary: buildSimpleItineraryView(itineraryByDay),
     recommendedDestinations: chosenStops,
+    travelMetrics: {
+      totalDays,
+      totalDistance: Math.round(totalDistance * 10) / 10, // Round to 1 decimal
+      totalTravelTime: totalTravelTime, // Already in HH:MM format from itinerary
+      totalWisataStops: totalTourismStopsSelected,
+      avgDistancePerDay:
+        totalDays > 0 ? Math.round((totalDistance / totalDays) * 10) / 10 : 0,
+    },
     route: {
       startLocation: userPoint,
       orderedStops: chosenStops.map((stop) => ({

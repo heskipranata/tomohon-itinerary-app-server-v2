@@ -25,6 +25,16 @@ function normalizeMinatKategori(minatKategori) {
   return [];
 }
 
+function validateUserId(userId) {
+  const id = normalizeText(userId);
+
+  if (!id) {
+    throw new Error("User tidak valid");
+  }
+
+  return id;
+}
+
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString("hex");
   const hash = crypto
@@ -128,18 +138,18 @@ async function registerUser({ nama, email, password, minatKategori }) {
   return data;
 }
 
-async function loginUser(nama, password) {
-  const normalizedNama = normalizeText(nama);
+async function loginUser(email, password) {
+  const normalizedEmail = normalizeText(email).toLowerCase();
   const normalizedPassword = normalizeText(password);
 
-  if (!normalizedNama || !normalizedPassword) {
-    throw new Error("Nama dan password wajib diisi");
+  if (!normalizedEmail || !normalizedPassword) {
+    throw new Error("Email dan password wajib diisi");
   }
 
   const { data, error } = await supabase
     .from("users")
     .select("*")
-    .eq("nama", normalizedNama)
+    .eq("email", normalizedEmail)
     .eq("role", "user")
     .single();
 
@@ -148,7 +158,7 @@ async function loginUser(nama, password) {
   }
 
   if (!verifyPassword(normalizedPassword, data.password)) {
-    throw new Error("Nama atau password salah");
+    throw new Error("Email atau password salah");
   }
 
   return data;
@@ -180,8 +190,90 @@ async function loginAdmin(email, password) {
   return data;
 }
 
+async function registerAdmin({ email, password, nama }) {
+  const normalizedEmail = normalizeText(email).toLowerCase();
+  const normalizedPassword = normalizeText(password);
+
+  // Generate nama dari email jika tidak diberikan
+  const adminNama = normalizeText(nama) || normalizedEmail.split("@")[0];
+
+  if (!normalizedEmail || !normalizedPassword) {
+    throw new Error("Email dan password wajib diisi");
+  }
+
+  const [existingByEmail, existingByNama] = await Promise.all([
+    findUserByField("email", normalizedEmail),
+    findUserByField("nama", adminNama),
+  ]);
+
+  if (existingByEmail.length > 0) {
+    throw new Error("Email sudah terdaftar");
+  }
+
+  if (existingByNama.length > 0) {
+    throw new Error("Nama sudah terdaftar");
+  }
+
+  const { data, error } = await supabase
+    .from("users")
+    .insert([
+      {
+        nama: adminNama,
+        email: normalizedEmail,
+        password: hashPassword(normalizedPassword),
+        role: "admin",
+        minat_kategori: [],
+      },
+    ])
+    .select("id, nama, email, role")
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+async function getUserProfileById(userId) {
+  const id = validateUserId(userId);
+
+  const { data, error } = await supabase
+    .from("users")
+    .select("id, nama, email, role, minat_kategori, created_at, updated_at")
+    .eq("id", id)
+    .single();
+
+  if (error || !data) {
+    throw new Error("User tidak ditemukan");
+  }
+
+  return data;
+}
+
+async function updateUserMinatKategori(userId, minatKategori) {
+  const id = validateUserId(userId);
+  const normalizedMinatKategori = normalizeMinatKategori(minatKategori);
+
+  const { data, error } = await supabase
+    .from("users")
+    .update({ minat_kategori: normalizedMinatKategori })
+    .eq("id", id)
+    .select("id, nama, email, role, minat_kategori, created_at, updated_at")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "User tidak ditemukan");
+  }
+
+  return data;
+}
+
 module.exports = {
   registerUser,
   loginUser,
   loginAdmin,
+  registerAdmin,
+  getUserProfileById,
+  updateUserMinatKategori,
 };

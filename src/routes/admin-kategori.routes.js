@@ -9,6 +9,7 @@ router.use(verifyToken, requireAdmin);
 
 router.get("/admin/kategori", adminKategoriController.getAdminKategoriList);
 router.post("/admin/kategori", adminKategoriController.createAdminKategori);
+router.put("/admin/kategori/:id", adminKategoriController.updateAdminKategori);
 router.delete(
   "/admin/kategori/:id",
   adminKategoriController.deleteAdminKategori,

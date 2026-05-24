@@ -9,8 +9,20 @@ router.use(verifyToken, requireAdmin);
 
 router.get("/admin/wisata", adminWisataController.getAdminWisataList);
 router.get("/admin/wisata/:id", adminWisataController.getAdminWisataById);
+router.get(
+  "/admin/wisata/kurasi/:section",
+  adminWisataController.getAdminCuratedWisataSection,
+);
 router.post("/admin/wisata", adminWisataController.createAdminWisata);
+router.put(
+  "/admin/wisata/kurasi/:section",
+  adminWisataController.replaceAdminCuratedWisataSection,
+);
 router.patch("/admin/wisata/:id", adminWisataController.updateAdminWisata);
+router.patch(
+  "/admin/wisata/:id/popularity",
+  adminWisataController.updateAdminWisataPopularity,
+);
 router.delete("/admin/wisata/:id", adminWisataController.deleteAdminWisata);
 
 module.exports = router;

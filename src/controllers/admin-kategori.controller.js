@@ -1,4 +1,4 @@
-const adminKategoriService = require("../services/destination.service");
+const adminKategoriService = require("../services/category.service");
 
 function parseIdParam(idParam) {
   const id = Number(idParam);
@@ -11,6 +11,17 @@ function parseIdParam(idParam) {
 }
 
 function buildCreatePayload(body) {
+  if (!body || typeof body !== "object") {
+    throw new Error("Body request tidak valid");
+  }
+
+  return {
+    nama: body.nama || body.nama_kategori,
+    nama_kategori: body.nama_kategori || body.nama,
+  };
+}
+
+function buildUpdatePayload(body) {
   if (!body || typeof body !== "object") {
     throw new Error("Body request tidak valid");
   }
@@ -57,6 +68,27 @@ async function createAdminKategori(req, res) {
   }
 }
 
+async function updateAdminKategori(req, res) {
+  try {
+    const id = parseIdParam(req.params.id);
+    const payload = buildUpdatePayload(req.body);
+    const data = await adminKategoriService.updateKategoriForAdmin(id, payload);
+
+    res.status(200).json({
+      message: "Kategori berhasil diperbarui",
+      data,
+    });
+  } catch (error) {
+    const isInputError = /wajib|valid|sudah ada|angka/i.test(error.message);
+    const isNotFound = /no rows/i.test(error.message);
+
+    res.status(isInputError ? 400 : isNotFound ? 404 : 500).json({
+      message: "Gagal memperbarui kategori",
+      error: isNotFound ? "Kategori tidak ditemukan" : error.message,
+    });
+  }
+}
+
 async function deleteAdminKategori(req, res) {
   try {
     const id = parseIdParam(req.params.id);
@@ -80,5 +112,6 @@ async function deleteAdminKategori(req, res) {
 module.exports = {
   getAdminKategoriList,
   createAdminKategori,
+  updateAdminKategori,
   deleteAdminKategori,
 };

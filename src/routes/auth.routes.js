@@ -6,8 +6,11 @@ const router = express.Router();
 
 router.post("/auth/register", authController.registerUser);
 router.post("/auth/login", authController.loginUser);
+router.get("/auth/profile", verifyToken, authController.getProfile);
+router.patch("/auth/profile", verifyToken, authController.updateMinatKategori);
 router.post("/auth/logout", verifyToken, authController.logout);
 
+router.post("/admin/register", authController.registerAdmin);
 router.post("/admin/login", authController.loginAdmin);
 router.post("/admin/logout", verifyToken, authController.logout);
 
