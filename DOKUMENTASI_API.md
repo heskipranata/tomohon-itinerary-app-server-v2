@@ -62,6 +62,16 @@ Setelah minat diubah, data wisata yang sesuai bisa diambil lewat:
 GET /api/objek-wisata/rekomendasi-minat
 ```
 
+## Strategi Endpoint Itinerary
+
+Backend saat ini dikembalikan ke alur yang lebih sederhana:
+
+- gunakan endpoint penuh `/api/objek-wisata/rekomendasi-itinerary` untuk hasil utama
+- gunakan endpoint preview/replace yang sudah ada jika ingin mengganti destinasi
+- hindari alur `enrich`/`sederhana-v2` untuk sementara sampai dibutuhkan lagi
+
+Dengan begitu frontend tidak perlu bergantung pada format tambahan yang sempat membuat proses testing lebih rumit.
+
 ## Data Storage Strategy (Approach 3)
 
 ### 🎯 Konsep Utama
@@ -377,6 +387,60 @@ Setelah disimpan, backend menggunakan **Approach 3 - Minimal Data Structure** un
 
 #### Penjelasan Struktur `data_itinerary` (Approach 3)
 
+---
+
+## Endpoint Batch Publik: Tempat Makan & Akomodasi
+
+Untuk melengkapi pola `objek_wisata` (batch), backend menyediakan endpoint batch publik untuk `tempat_makan` dan `akomodasi` supaya frontend dapat melakukan enrichment per-type secara efisien.
+
+### Endpoints
+
+```
+GET /api/tempat-makan?ids=1,2,3&fields=id,nama,lokasi,url_foto
+GET /api/akomodasi?ids=1,2,3&fields=id,nama,lokasi,url_foto
+```
+
+### Deskripsi
+
+- Keduanya menerima query param `ids` (komma-separated) yang wajib diisi.
+- Opsional `fields` untuk memilih field yang dikembalikan (konsisten dengan `pickRequestedFields`). Jika tidak disertakan, endpoint mengembalikan field default yang berguna untuk UI (id, nama, deskripsi, lokasi, koordinat, gambar, harga/kelas jika ada, jam_operasional, fasilitas).
+- Endpoint ini dirancang untuk batch fetch (max ~200 id per request).
+
+### Contoh Request
+
+```
+GET /api/tempat-makan?ids=tempat-makan-12,34&fields=id,nama,lokasi,url_foto
+```
+
+### Contoh Response (sukses)
+
+```json
+{
+  "message": "Detail tempat makan (batch) berhasil diambil",
+  "total": 2,
+  "data": [
+    {
+      "id": "tempat-makan-12",
+      "name": "Restoran Coto Manado",
+      "locationLabel": "Jl. Sudirman No.12, Tomohon",
+      "imageUrl": "https://.../resto.jpg"
+    },
+    {
+      "id": 34,
+      "name": "Warung Soto Pak Budi",
+      "locationLabel": "Pasar Pagi",
+      "imageUrl": null
+    }
+  ]
+}
+```
+
+### Catatan implementasi
+
+- Gunakan `visitType` dari `visitList` untuk memilih endpoint yang tepat di frontend.
+- Jika data `tempat_makan` atau `akomodasi` tidak tersedia di DB (response `null`), tampilkan snapshot `customName` dari `visitList` dan tawarkan tombol "Muat detail".
+- Pertimbangkan caching (`masterById`) di client untuk menghindari refetch saat user navigasi Next/Prev.
+
 **Mengapa Minimal Structure?**
 
 - Mengurangi storage database dari 50-100KB menjadi ~1KB per trip
@@ -396,6 +460,8 @@ Setelah disimpan, backend menggunakan **Approach 3 - Minimal Data Structure** un
 | `duration`             | string         | Durasi kunjungan (HH:MM)                            | "02:00"                |
 | `distanceFromPrevious` | number         | Jarak dari kunjungan sebelumnya (km)                | 5.2                    |
 | `customName`           | string         | **Optional** - Nama custom untuk food/accommodation | "Restoran Coto Manado" |
+
+> Catatan: response daftar rencana perjalanan sekarang juga menyertakan `data_itinerary.visitList` dan `progres_kunjungan` penuh, supaya frontend bisa mencocokkan stop yang sama dengan konsisten tanpa menebak dari summary saja.
 
 **Deteksi `visitType` Otomatis:**
 
@@ -789,7 +855,12 @@ PATCH /api/rencana-perjalanan/:id/progres-kunjungan
 
 ### Deskripsi
 
-Mengupdate status kunjungan wisata dalam perjalanan. **User biasa BISA menggunakan endpoint ini.** Memungkinkan menandai wisata mana saja yang sudah dikunjungi dan berapa banyak yang belum.
+Mengupdate status stop perjalanan dalam itinerary. **User biasa BISA menggunakan endpoint ini.** Sekarang respons dibuat lebih lengkap supaya frontend bisa menampilkan:
+
+- status per stop: `completed` / `not_started`
+- jenis stop: `wisata`, `food`, atau `accommodation`
+- tanggal dan jam selesai per stop
+- ringkasan progres per hari beserta daftar stop di hari tersebut
 
 ⚠️ **PENTING**: Endpoint ini **BUKAN** admin-only. User biasa (`role='user'`) sepenuhnya bisa mengakses endpoint ini untuk melacak progress perjalanan mereka sendiri.
 
@@ -806,44 +877,165 @@ Mengupdate status kunjungan wisata dalam perjalanan. **User biasa BISA menggunak
 
 ```json
 {
-  "leaveLastUnvisitedCount": 2
+  "stopInstanceId": "1",
+  "action": "complete"
 }
 ```
 
 **Penjelasan**:
 
-- `leaveLastUnvisitedCount` (number, required): Jumlah wisata yang ingin ditinggalkan belum dikunjungi
-  - Contoh: jika ada 6 wisata dan value = 2, maka 4 wisata pertama ditandai "dikunjungi", 2 terakhir "belum dikunjungi"
+- `stopInstanceId` (string, required): ID instance stop yang diklik di UI. Ini key utama yang stabil untuk tracking.
+- `visitOrder` (number, optional): boleh dipakai sebagai fallback untuk data lama, tapi frontend baru sebaiknya pakai `stopInstanceId`.
+- `destinationId` (number|string, optional): hanya identitas destinasi asal, bukan key utama tracking.
+- `action` (string, optional): `complete` atau `undo`
+  - Default: `complete`
+  - `complete` menandai destinasi selesai dan mengisi timestamp selesai
+  - `undo` membatalkan status selesai untuk destinasi tersebut
 
 ### Response Sukses (200 OK)
 
 ```json
 {
-  "message": "Progres kunjungan berhasil diupdate",
+  "message": "Progres destinasi berhasil diupdate",
   "data": {
     "id": "aa33a164-6c6d-4d0a-ba09-5043d248523f",
     "user_id": "550e8400-e29b-41d4-a716-446655440000",
     "judul_trip": "Trip Manado 3 Hari",
     "progres_kunjungan": {
       "totalStops": 6,
-      "visitedStopIds": [1, 2, 3, 4],
-      "remainingStops": 2,
+      "visitedStopIds": [1, 2, 3],
+      "remainingStops": 3,
+      "updatedAt": "2026-05-07T15:30:00Z",
       "lastVisitedAt": "2026-05-07T15:30:00Z",
+      "destinationProgress": [
+        {
+          "stopInstanceId": "1",
+          "stopIndex": 1,
+          "destinationId": 1,
+          "destinationName": "Bukit Manado",
+          "plannedDate": "2026-05-06",
+          "status": "completed",
+          "isCompleted": true,
+          "completedAt": "2026-05-07T15:30:00Z",
+          "completedDate": "2026-05-07",
+          "completedTime": "15:30:00",
+          "dayNumber": 1,
+          "order": 1
+        },
+        {
+          "stopInstanceId": "2",
+          "stopIndex": 2,
+          "destinationId": 27,
+          "destinationName": "Danau Tondano",
+          "plannedDate": "2026-05-06",
+          "status": "completed",
+          "isCompleted": true,
+          "completedAt": "2026-05-07T15:30:00Z",
+          "completedDate": "2026-05-07",
+          "completedTime": "15:30:00",
+          "dayNumber": 1,
+          "order": 2
+        },
+        {
+          "stopInstanceId": "3",
+          "stopIndex": 3,
+          "destinationId": 3,
+          "destinationName": "Pantai Malalayang",
+          "plannedDate": "2026-05-07",
+          "status": "not_started",
+          "isCompleted": false,
+          "completedAt": null,
+          "completedDate": null,
+          "completedTime": null
+        }
+      ],
       "byDay": {
         "2026-05-06": {
           "status": "completed",
           "totalStops": 2,
-          "completedStopIds": [1, 2]
+          "completedStops": 2,
+          "remainingStops": 0,
+          "completedStopIds": [1, 2],
+          "destinations": [
+            {
+              "destinationId": 1,
+              "destinationName": "Bukit Manado",
+              "status": "completed",
+              "isCompleted": true,
+              "completedAt": "2026-05-07T15:30:00Z",
+              "completedDate": "2026-05-07",
+              "completedTime": "15:30:00",
+              "order": 1
+            },
+            {
+              "destinationId": 27,
+              "destinationName": "Danau Tondano",
+              "status": "completed",
+              "isCompleted": true,
+              "completedAt": "2026-05-07T15:30:00Z",
+              "completedDate": "2026-05-07",
+              "completedTime": "15:30:00",
+              "order": 2
+            }
+          ]
         },
         "2026-05-07": {
           "status": "in_progress",
           "totalStops": 3,
-          "completedStopIds": [3, 4]
+          "completedStops": 1,
+          "remainingStops": 2,
+          "completedStopIds": [3],
+          "destinations": [
+            {
+              "destinationId": 3,
+              "destinationName": "Pantai Malalayang",
+              "status": "completed",
+              "isCompleted": true,
+              "completedAt": "2026-05-07T15:30:00Z",
+              "completedDate": "2026-05-07",
+              "completedTime": "15:30:00",
+              "order": 1
+            },
+            {
+              "destinationId": 4,
+              "destinationName": "Jembatan Soekarno",
+              "status": "not_started",
+              "isCompleted": false,
+              "completedAt": null,
+              "completedDate": null,
+              "completedTime": null,
+              "order": 2
+            },
+            {
+              "destinationId": 5,
+              "destinationName": "Wenang",
+              "status": "not_started",
+              "isCompleted": false,
+              "completedAt": null,
+              "completedDate": null,
+              "completedTime": null,
+              "order": 3
+            }
+          ]
         },
         "2026-05-08": {
           "status": "not_started",
           "totalStops": 1,
-          "completedStopIds": []
+          "completedStops": 0,
+          "remainingStops": 1,
+          "completedStopIds": [],
+          "destinations": [
+            {
+              "destinationId": 6,
+              "destinationName": "Bunaken",
+              "status": "not_started",
+              "isCompleted": false,
+              "completedAt": null,
+              "completedDate": null,
+              "completedTime": null,
+              "order": 1
+            }
+          ]
         }
       }
     }
@@ -855,13 +1047,37 @@ Mengupdate status kunjungan wisata dalam perjalanan. **User biasa BISA menggunak
 
 #### Level Utama
 
-| Field            | Tipe              | Deskripsi                           |
-| ---------------- | ----------------- | ----------------------------------- |
-| `totalStops`     | number            | Total jumlah wisata dalam trip      |
-| `visitedStopIds` | array             | ID wisata yang sudah dikunjungi     |
-| `remainingStops` | number            | Jumlah wisata yang belum dikunjungi |
-| `lastVisitedAt`  | string (ISO 8601) | Timestamp kunjungan terakhir        |
-| `byDay`          | object            | Detail progress per hari            |
+| Field                 | Tipe              | Deskripsi                           |
+| --------------------- | ----------------- | ----------------------------------- |
+| `totalStops`          | number            | Total jumlah wisata dalam trip      |
+| `visitedStopIds`      | array             | ID wisata yang sudah dikunjungi     |
+| `remainingStops`      | number            | Jumlah wisata yang belum dikunjungi |
+| `lastVisitedAt`       | string (ISO 8601) | Timestamp kunjungan terakhir        |
+| `updatedAt`           | string (ISO 8601) | Timestamp update progres terakhir   |
+| `destinationProgress` | array             | Progress detail per destinasi       |
+| `byDay`               | object            | Detail progress per hari            |
+
+#### Detail `destinationProgress`
+
+Setiap item merepresentasikan satu destinasi di itinerary:
+
+| Field             | Tipe                | Deskripsi                              |
+| ----------------- | ------------------- | -------------------------------------- |
+| `stopInstanceId`  | string              | ID instance stop yang stabil           |
+| `stopIndex`       | number              | Urutan destinasi dalam trip            |
+| `destinationId`   | number/string       | ID destinasi                           |
+| `destinationName` | string              | Nama destinasi                         |
+| `plannedDate`     | string (YYYY-MM-DD) | Tanggal jadwal destinasi               |
+| `dayNumber`       | number              | Nomor hari di trip                     |
+| `order`           | number              | Urutan stop dalam hari                 |
+| `stopType`        | string              | `wisata`, `food`, atau `accommodation` |
+| `status`          | string              | `completed` atau `not_started`         |
+| `isCompleted`     | boolean             | True jika destinasi selesai            |
+| `completedAt`     | string/null         | Timestamp selesai                      |
+| `completedDate`   | string/null         | Tanggal selesai                        |
+| `completedTime`   | string/null         | Jam selesai                            |
+
+> `stopInstanceId` adalah key utama untuk tracking frontend. Gunakan field ini untuk tombol selesai/batal agar stop yang sama di hari berbeda tidak tertukar.
 
 #### Detail `byDay`
 
@@ -872,9 +1088,25 @@ Untuk setiap tanggal:
   "YYYY-MM-DD": {
     "status": "completed|in_progress|not_started",
     "totalStops": 2,
-    "completedStopIds": [1, 2]
+    "completedStops": 2,
+    "remainingStops": 0,
+    "completedStopIds": [1, 2],
+    "destinations": [
+      {
+        "destinationId": 1,
+        "destinationName": "Bukit Manado",
+        "status": "completed",
+        "isCompleted": true,
+        "completedAt": "2026-05-07T15:30:00Z",
+        "completedDate": "2026-05-07",
+        "completedTime": "15:30:00",
+        "order": 1
+      }
+    ]
   }
 }
+
+**Catatan penting**: progress sekarang mencakup semua stop yang punya `destinationId`, termasuk rumah makan dan hotel. Kalau user klik stop yang sama lagi dengan action `complete`, data tetap idempotent dan tidak mengubah status selesai.
 ```
 
 **Status Values**:
@@ -907,7 +1139,7 @@ Untuk setiap tanggal:
 ```json
 {
   "message": "Invalid request",
-  "error": "leaveLastUnvisitedCount harus angka positif"
+  "error": "destinationId wajib diisi"
 }
 ```
 
@@ -918,7 +1150,8 @@ curl -X PATCH http://localhost:4000/api/rencana-perjalanan/aa33a164-6c6d-4d0a-ba
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer eyJhbGc..." \
   -d '{
-    "leaveLastUnvisitedCount": 2
+    "stopInstanceId": "1",
+    "action": "complete"
   }'
 ```
 
@@ -937,7 +1170,8 @@ const response = await fetch(
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
-      leaveLastUnvisitedCount: 2,
+      destinationId: 27,
+      action: "complete",
     }),
   },
 );
@@ -1015,7 +1249,8 @@ const progressResp = await fetch(
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
-      leaveLastUnvisitedCount: 2, // 2 wisata belum dikunjungi
+      destinationId: 27, // ID destinasi yang diklik
+      action: "complete",
     }),
   },
 );

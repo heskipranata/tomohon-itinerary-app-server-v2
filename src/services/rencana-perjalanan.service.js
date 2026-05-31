@@ -26,7 +26,8 @@ function getCoverImageUrl(dataItinerary) {
 
   const recommendedCover = Array.isArray(dataItinerary?.recommendedDestinations)
     ? dataItinerary.recommendedDestinations.find(
-        (item) => item && getFirstAvailableValue(item, ["imageUrl", "image_url"]),
+        (item) =>
+          item && getFirstAvailableValue(item, ["imageUrl", "image_url"]),
       )
     : null;
   const recommendedImage = getFirstAvailableValue(recommendedCover, [
@@ -49,7 +50,8 @@ function getCoverImageUrl(dataItinerary) {
     Array.isArray(dataItinerary?.itineraryByDay) &&
     dataItinerary.itineraryByDay.length > 0
       ? (dataItinerary.itineraryByDay[0]?.visits || []).find(
-          (visit) => visit && getFirstAvailableValue(visit, ["imageUrl", "image"]),
+          (visit) =>
+            visit && getFirstAvailableValue(visit, ["imageUrl", "image"]),
         )
       : null;
 
@@ -95,19 +97,27 @@ function buildCompactTripSummary(dataItinerary) {
 
   const totalDestinations =
     wisataStops.filter((v) => v?.wisataId).length ||
-    recommendedDestinations.filter((item) => item?.sourceType === "objek_wisata").length ||
-    legacyWisataStops.filter((v) => getFirstAvailableValue(v, ["destinationId", "id"])).length ||
+    recommendedDestinations.filter(
+      (item) => item?.sourceType === "objek_wisata",
+    ).length ||
+    legacyWisataStops.filter((v) =>
+      getFirstAvailableValue(v, ["destinationId", "id"]),
+    ).length ||
     simpleItinerary.reduce(
       (count, day) =>
         count +
         (Array.isArray(day?.visits)
-          ? day.visits.filter((v) => !v?.isLunchStop && !v?.isAccommodationStop).length
+          ? day.visits.filter((v) => !v?.isLunchStop && !v?.isAccommodationStop)
+              .length
           : 0),
       0,
     );
 
   const totalStops =
-    visitList.length || legacyVisits.length || recommendedDestinations.length || 0;
+    visitList.length ||
+    legacyVisits.length ||
+    recommendedDestinations.length ||
+    0;
 
   const summary = dataItinerary?.summary || {};
   const totalDays =
@@ -319,6 +329,23 @@ async function getRencanaPerjalananById({ rencanaId, userId }) {
   return data;
 }
 
+async function hapusRencanaPerjalanan({ rencanaId, userId }) {
+  if (!rencanaId || !userId) {
+    throw new Error("rencanaId dan userId wajib diisi");
+  }
+
+  const { data, error } = await supabase
+    .from("rencana_perjalanan")
+    .delete()
+    .eq("id", rencanaId)
+    .eq("user_id", userId)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data;
+}
+
 async function getRencanaPerjalananByUser({ userId }) {
   if (!userId) {
     throw new Error("userId wajib diisi");
@@ -337,6 +364,24 @@ async function getRencanaPerjalananByUser({ userId }) {
   return (data || []).map((trip) => {
     const compactSummary = buildCompactTripSummary(trip.data_itinerary);
     const previewList = buildTripPreviewList(trip.data_itinerary);
+    const itinerarySnapshot = trip.data_itinerary || {};
+
+    // compute visited / completion metrics
+    const visitedStopIds = Array.isArray(trip.progres_kunjungan?.visitedStopIds)
+      ? trip.progres_kunjungan.visitedStopIds
+      : [];
+    const visitedCount = visitedStopIds.length;
+    const totalDestinations = compactSummary.totalDestinations || 0;
+    const completionPercent =
+      totalDestinations > 0
+        ? Math.round((visitedCount / totalDestinations) * 1000) / 10
+        : 0;
+
+    const enrichedSummary = {
+      ...compactSummary,
+      visitedCount,
+      completionPercent,
+    };
 
     return {
       id: trip.id,
@@ -347,11 +392,27 @@ async function getRencanaPerjalananByUser({ userId }) {
       created_at: trip.created_at,
       updated_at: trip.updated_at,
       progres_kunjungan: trip.progres_kunjungan || {},
-      summary: compactSummary,
+      summary: enrichedSummary,
       previewList,
       data_itinerary: {
-        summary: compactSummary,
-        generatedAt: trip.data_itinerary?.generatedAt || null,
+        ...itinerarySnapshot,
+        summary: itinerarySnapshot.summary || enrichedSummary,
+        generatedAt: itinerarySnapshot.generatedAt || null,
+        visitList: Array.isArray(itinerarySnapshot.visitList)
+          ? itinerarySnapshot.visitList
+          : [],
+        itineraryByDay: Array.isArray(itinerarySnapshot.itineraryByDay)
+          ? itinerarySnapshot.itineraryByDay
+          : [],
+        recommendedDestinations: Array.isArray(
+          itinerarySnapshot.recommendedDestinations,
+        )
+          ? itinerarySnapshot.recommendedDestinations
+          : [],
+        simpleItinerary: Array.isArray(itinerarySnapshot.simpleItinerary)
+          ? itinerarySnapshot.simpleItinerary
+          : [],
+        travelMetrics: itinerarySnapshot.travelMetrics || null,
       },
     };
   });
@@ -382,4 +443,5 @@ module.exports = {
   getRencanaPerjalananByUser,
   getRencanaPerjalananById,
   updateProgresKunjungan,
+  hapusRencanaPerjalanan,
 };

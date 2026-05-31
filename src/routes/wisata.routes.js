@@ -11,6 +11,12 @@ router.post(
 );
 
 router.post(
+  "/objek-wisata/rekomendasi-itinerary/sederhana",
+  verifyToken,
+  wisataController.getItineraryRecommendationSimple,
+);
+
+router.post(
   "/objek-wisata/rekomendasi-itinerary/replacement-preview",
   verifyToken,
   wisataController.previewItineraryReplacement,
@@ -32,6 +38,12 @@ router.get(
   "/rencana-perjalanan/:id",
   verifyToken,
   wisataController.getRencanaPerjalananById,
+);
+
+router.delete(
+  "/rencana-perjalanan/:id",
+  verifyToken,
+  wisataController.deleteRencanaPerjalanan,
 );
 
 router.post(
@@ -73,9 +85,16 @@ router.get(
 );
 
 router.get(
-  "/objek-wisata",
-  wisataController.getObjekWisataBatch,
+  "/objek-wisata/rekomendasi-minat-kategori",
+  verifyToken,
+  wisataController.getWisataForUserMinatByCategory,
 );
+
+router.get("/objek-wisata", wisataController.getObjekWisataBatch);
+
+router.get("/tempat-makan", wisataController.getTempatMakanBatch);
+
+router.get("/akomodasi", wisataController.getAkomodasiBatch);
 
 router.get(
   "/objek-wisata/kurasi/:section",

@@ -74,21 +74,21 @@ const ACCOMMODATION_CATEGORY_KEYWORDS = [
 
 const CATEGORY_VISIT_DURATION_RULES = {
   waterfall: {
-    minMinutes: 180,
-    maxMinutes: 240,
-    defaultMinutes: 210,
+    minMinutes: 240,
+    maxMinutes: 360,
+    defaultMinutes: 300,
     label: "air terjun",
   },
   mountain: {
-    minMinutes: 240,
-    maxMinutes: 300,
-    defaultMinutes: 270,
+    minMinutes: 300,
+    maxMinutes: 420,
+    defaultMinutes: 360,
     label: "gunung",
   },
   default: {
-    minMinutes: 120,
-    maxMinutes: 180,
-    defaultMinutes: 150,
+    minMinutes: 180,
+    maxMinutes: 300,
+    defaultMinutes: 240,
     label: "umum",
   },
 };
@@ -337,13 +337,19 @@ async function applyRoadMetricsToItinerary({
           )
         : arrivalTime;
 
-      // LUNCH ENFORCER
+      // LUNCH ENFORCER (Relaxed)
       if (visit.isLunchStop) {
         const lunchTarget = buildDateByMinutes(
           dayStart,
           LUNCH_WINDOW_START_MINUTES,
         );
-        if (visitStart < lunchTarget) visitStart = lunchTarget;
+
+        if (
+          visitStart < lunchTarget &&
+          (!operatingWindow || visitStart < operatingWindow.start)
+        ) {
+          visitStart = lunchTarget;
+        }
       }
 
       const visitStartAligned = alignDateToTimeSlot(visitStart);
@@ -655,11 +661,18 @@ function selectNearestFeasibleCandidateFromPool({
       travelDurationBonusMinutes,
     };
 
+    // (Pendekatan Fungsi Objektif Waktu)
+    const wastedTimeMinutes = evaluated.travelMinutes + evaluated.waitMinutes;
+    const bestWastedTimeMinutes = bestCandidate
+      ? bestCandidate.travelMinutes + bestCandidate.waitMinutes
+      : Infinity;
+
     if (
       !bestCandidate ||
-      evaluated.travelDistanceKm < bestCandidate.travelDistanceKm ||
-      (evaluated.travelDistanceKm === bestCandidate.travelDistanceKm &&
-        evaluated.totalConsumedMinutes < bestCandidate.totalConsumedMinutes)
+      wastedTimeMinutes < bestWastedTimeMinutes ||
+      // Jika waktu terbuangnya sama persis, gunakan jarak sebagai penentu
+      (wastedTimeMinutes === bestWastedTimeMinutes &&
+        evaluated.travelDistanceKm < bestCandidate.travelDistanceKm)
     ) {
       bestCandidate = evaluated;
     }
@@ -669,10 +682,23 @@ function selectNearestFeasibleCandidateFromPool({
 
 function isCandidateBetter(currentBest, nextCandidate) {
   if (!currentBest) return true;
-  if (currentBest.travelMinutes !== nextCandidate.travelMinutes)
-    return nextCandidate.travelMinutes < currentBest.travelMinutes;
-  if (currentBest.travelDistanceKm !== nextCandidate.travelDistanceKm)
+
+  // Hitung total waktu terbuang (Perjalanan + Menunggu Gerbang Buka)
+  const currentWastedTime = currentBest.travelMinutes + currentBest.waitMinutes;
+  const nextWastedTime =
+    nextCandidate.travelMinutes + nextCandidate.waitMinutes;
+
+  // Prioritas 1: Minimalkan Waktu Terbuang
+  if (currentWastedTime !== nextWastedTime) {
+    return nextWastedTime < currentWastedTime;
+  }
+
+  // Prioritas 2: Jika waktu terbuang sama, ambil yang jarak meternya terdekat
+  if (currentBest.travelDistanceKm !== nextCandidate.travelDistanceKm) {
     return nextCandidate.travelDistanceKm < currentBest.travelDistanceKm;
+  }
+
+  // Prioritas 3 dan seterusnya (Tie-breakers bawaan Anda)
   if (currentBest.feasibleNextCount !== nextCandidate.feasibleNextCount)
     return nextCandidate.feasibleNextCount > currentBest.feasibleNextCount;
   if (currentBest.almostClosing !== nextCandidate.almostClosing)
@@ -683,6 +709,7 @@ function isCandidateBetter(currentBest, nextCandidate) {
     return (
       nextCandidate.totalConsumedMinutes < currentBest.totalConsumedMinutes
     );
+
   return (
     nextCandidate.candidate.distanceFromUserKm <
     currentBest.candidate.distanceFromUserKm
@@ -1078,7 +1105,6 @@ function isLunchFriendlyDestination(destination) {
     ...normalizeTextListTokens(destination.name),
     ...normalizeTextListTokens(destination.category),
     ...(destination.categoryTokens || []),
-    ...(destination.facilities || []),
   ];
   return LUNCH_CATEGORY_KEYWORDS.some((keyword) =>
     tokens.some((token) => token.includes(keyword)),
@@ -1290,9 +1316,22 @@ async function buildItineraryRecommendation(payload) {
     let accommodationVisitName = null;
     let accommodationRecommendations = [];
 
+    let dailyTourismLimit = null;
+    if (destinationLimit) {
+      const remainingDays = itineraryByDay.length - dayIndex;
+      const remainingQuota = destinationLimit - totalTourismStopsSelected;
+      // Math.ceil memastikan pembagian kuota tidak menghasilkan angka nol jika kuota ganjil
+      dailyTourismLimit = Math.ceil(remainingQuota / remainingDays);
+    }
+    let dailyTourismStopsSelected = 0;
+
     while (currentTime < dayEnd) {
-      const tourismLimitReached =
+      const globalLimitReached =
         destinationLimit && totalTourismStopsSelected >= destinationLimit;
+      const dailyLimitReached =
+        dailyTourismLimit !== null &&
+        dailyTourismStopsSelected >= dailyTourismLimit;
+      const tourismLimitReached = globalLimitReached || dailyLimitReached;
       const lunchAttemptWindowOpen =
         lunchStopRequested &&
         !lunchStopAdded &&
@@ -1513,6 +1552,7 @@ async function buildItineraryRecommendation(payload) {
         lunchStopVisitName = visit.destinationName;
       } else {
         totalTourismStopsSelected += 1;
+        dailyTourismStopsSelected += 1;
       }
     }
 
@@ -1693,10 +1733,32 @@ async function buildItineraryRecommendation(payload) {
   );
   const totalDays = itineraryByDay.length;
 
+  const normalizedItineraryByDay = itineraryByDay.map((dayPlan, dayIndex) => ({
+    // ...
+    visits: Array.isArray(dayPlan?.visits)
+      ? dayPlan.visits.map((visit, visitIndex) => ({
+          ...visit,
+          // <--- INI DIA
+          stopInstanceId:
+            visit?.stopInstanceId ??
+            String(visit?.visitOrder ?? visit?.order ?? visitIndex + 1),
+        }))
+      : [],
+  }));
+
+  const normalizedRecommendedDestinations = chosenStops.map(
+    (stop, stopIndex) => ({
+      ...stop,
+      stopInstanceId:
+        stop?.stopInstanceId ??
+        String(stop?.order ?? stop?.visitOrder ?? stopIndex + 1),
+    }),
+  );
+
   return {
-    itineraryByDay,
-    simpleItinerary: buildSimpleItineraryView(itineraryByDay),
-    recommendedDestinations: chosenStops,
+    itineraryByDay: normalizedItineraryByDay,
+    simpleItinerary: buildSimpleItineraryView(normalizedItineraryByDay),
+    recommendedDestinations: normalizedRecommendedDestinations,
     travelMetrics: {
       totalDays,
       totalDistance: Math.round(totalDistance * 10) / 10, // Round to 1 decimal
@@ -1707,8 +1769,9 @@ async function buildItineraryRecommendation(payload) {
     },
     route: {
       startLocation: userPoint,
-      orderedStops: chosenStops.map((stop) => ({
+      orderedStops: normalizedRecommendedDestinations.map((stop) => ({
         order: stop.order,
+        stopInstanceId: stop.stopInstanceId,
         destinationId: stop.destinationId,
         destinationName: stop.destinationName,
         latitude: stop.location.latitude,
@@ -1985,13 +2048,20 @@ function rebuildDaySchedule(dayPlan, userPoint, speed) {
         )
       : arrivalTime;
 
-    // LUNCH ENFORCER REBUILD
+    // LUNCH ENFORCER REBUILD (Relaxed)
     if (visit.isLunchStop) {
       const lunchTarget = buildDateByMinutes(
         dayStart,
         LUNCH_WINDOW_START_MINUTES,
       );
-      if (visitStart < lunchTarget) visitStart = lunchTarget;
+
+      // Hanya tahan jadwal ke 11:30 JIKA tempat tersebut benar-benar belum buka
+      if (
+        visitStart < lunchTarget &&
+        (!operatingWindow || visitStart < operatingWindow.start)
+      ) {
+        visitStart = lunchTarget;
+      }
     }
 
     const visitStartAligned = alignDateToTimeSlot(visitStart);

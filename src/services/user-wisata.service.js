@@ -102,3 +102,37 @@ async function getWisataByPreferences(minatKategori) {
 module.exports = {
   getWisataByPreferences,
 };
+
+async function getWisataByCategoryIds(categoryIds) {
+  const ids = Array.isArray(categoryIds)
+    ? categoryIds.map((i) => String(i).trim()).filter(Boolean)
+    : [];
+
+  if (ids.length === 0) {
+    return { preferences: ids, total: 0, wisata: [] };
+  }
+
+  const wisataRows = await getAllWisata();
+
+  const filtered = (wisataRows || []).filter((row) => {
+    const kIds = Array.isArray(row.kategori_ids)
+      ? row.kategori_ids.map((x) => String(x))
+      : [];
+    return kIds.some((k) => ids.includes(String(k)));
+  });
+
+  const wisata = filtered.map(mapWisataRecommendation).sort((a, b) => {
+    const categoryComparison = String(a.category || "").localeCompare(
+      String(b.category || ""),
+    );
+    if (categoryComparison !== 0) return categoryComparison;
+    return String(a.name || "").localeCompare(String(b.name || ""));
+  });
+
+  return { preferences: ids, total: wisata.length, wisata };
+}
+
+module.exports = {
+  getWisataByPreferences,
+  getWisataByCategoryIds,
+};

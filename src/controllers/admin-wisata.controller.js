@@ -42,9 +42,16 @@ function buildCreatePayload(body) {
     throw new Error("nama_objek_wisata dan lokasi wajib diisi");
   }
 
-  return {
-    ...body,
-  };
+  const payload = { ...body };
+
+  if (payload.kategoriIds) {
+    if (!Array.isArray(payload.kategoriIds)) {
+      throw new Error("kategoriIds harus berupa array id kategori");
+    }
+    payload.kategoriIds = payload.kategoriIds.map((v) => Number(v));
+  }
+
+  return payload;
 }
 
 function buildUpdatePayload(body) {

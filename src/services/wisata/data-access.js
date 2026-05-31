@@ -1,6 +1,7 @@
 function buildWisataDataAccess({ supabase, normalizeCategoryTokens }) {
   const wisataTable = "objek_wisata";
   const kategoriTable = "kategori_wisata";
+  const mappingTable = "objek_wisata_kategori";
   const akomodasiTable = "akomodasi";
   const akomodasiFallbackTables = ["hotel", "tempat_menginap"];
 
@@ -18,9 +19,55 @@ function buildWisataDataAccess({ supabase, normalizeCategoryTokens }) {
   }
 
   async function getAllWisata() {
-    const { data, error } = await supabase.from(wisataTable).select("*");
-    if (error) throw error;
-    return data;
+    const { data: wisataRows, error: wisataError } = await supabase
+      .from(wisataTable)
+      .select("*");
+    if (wisataError) throw wisataError;
+
+    const ids = (wisataRows || []).map((r) => r.id).filter(Boolean);
+
+    if (ids.length === 0) return wisataRows || [];
+
+    const { data: mappingRows, error: mappingError } = await supabase
+      .from(mappingTable)
+      .select("objek_wisata_id,kategori_id")
+      .in("objek_wisata_id", ids);
+
+    if (mappingError) throw mappingError;
+
+    const kategoriIds = Array.from(
+      new Set((mappingRows || []).map((m) => m.kategori_id).filter(Boolean)),
+    );
+
+    const { data: kategoriRows, error: kategoriError } = kategoriIds.length
+      ? await supabase
+          .from(kategoriTable)
+          .select("id,nama")
+          .in("id", kategoriIds)
+      : { data: [], error: null };
+
+    if (kategoriError) throw kategoriError;
+
+    const kategoriById = (kategoriRows || []).reduce((acc, k) => {
+      acc[k.id] = k.nama;
+      return acc;
+    }, {});
+
+    const mappingsByWisata = (mappingRows || []).reduce((acc, m) => {
+      acc[m.objek_wisata_id] = acc[m.objek_wisata_id] || [];
+      acc[m.objek_wisata_id].push(m.kategori_id);
+      return acc;
+    }, {});
+
+    return (wisataRows || []).map((row) => {
+      const kIds = mappingsByWisata[row.id] || [];
+      const kNames = kIds.map((id) => kategoriById[id]).filter(Boolean);
+      return {
+        ...row,
+        kategori_ids: kIds,
+        kategori: kNames.join(", ") || row.kategori || null,
+      };
+    });
   }
 
   async function getAllTempatMakan() {
@@ -47,21 +94,26 @@ function buildWisataDataAccess({ supabase, normalizeCategoryTokens }) {
   // BUILD UNIQUE CATEGORY LIST DARI SEMUA TABEL
   async function getAvailableWisataCategories() {
     // Ambil semua data sekalian
-    const [wisataData, kategoriData, tempatMakanData, akomodasiData] = await Promise.all([
-      getAllWisata(),
-      supabase.from(kategoriTable).select("nama"),
-      getAllTempatMakan().catch(() => []), // Catch jika tabel belum ada agar tidak error
-      getAllAkomodasi().catch(() => ({ rows: [] }))
-    ]);
+    const [wisataData, kategoriData, tempatMakanData, akomodasiData] =
+      await Promise.all([
+        getAllWisata(),
+        supabase.from(kategoriTable).select("nama"),
+        getAllTempatMakan().catch(() => []), // Catch jika tabel belum ada agar tidak error
+        getAllAkomodasi().catch(() => ({ rows: [] })),
+      ]);
 
     const kategoriRows = kategoriData?.data || [];
-    const tempatMakanRows = Array.isArray(tempatMakanData) ? tempatMakanData : [];
+    const tempatMakanRows = Array.isArray(tempatMakanData)
+      ? tempatMakanData
+      : [];
     const akomodasiRows = akomodasiData.rows || [];
 
     const categories = [
       ...new Set(
         [
-          ...kategoriRows.map((item) => normalizeCategoryTokens(item.nama)).flat(),
+          ...kategoriRows
+            .map((item) => normalizeCategoryTokens(item.nama))
+            .flat(),
           ...wisataData,
           ...tempatMakanRows,
           ...akomodasiRows,

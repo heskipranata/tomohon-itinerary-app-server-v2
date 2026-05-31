@@ -3,6 +3,7 @@ const { normalizeCategoryTokens } = require("./wisata/category-utils");
 
 const kategoriTable = "kategori_wisata";
 const wisataTable = "objek_wisata";
+const mappingTable = "objek_wisata_kategori";
 
 function normalizeKategoriName(value) {
   return String(value || "")
@@ -107,38 +108,7 @@ async function updateKategoriForAdmin(id, payload) {
     throw new Error("Kategori sudah ada");
   }
 
-  const { data: wisataData, error: wisataError } = await supabase
-    .from(wisataTable)
-    .select("id,kategori");
-
-  if (wisataError) throw wisataError;
-
-  const normalizedLama = normalizeKategoriName(kategoriLama.nama);
-  const wisataTerkait = (wisataData || []).filter((item) => {
-    const tokens = normalizeCategoryTokens(item.kategori);
-    return tokens.includes(normalizedLama);
-  });
-
-  const updateWisataPromises = wisataTerkait.map((item) => {
-    const kategoriBaru = replaceCategoryToken(
-      item.kategori,
-      normalizedLama,
-      namaBaru,
-    );
-
-    return supabase
-      .from(wisataTable)
-      .update({ kategori: kategoriBaru })
-      .eq("id", item.id);
-  });
-
-  const updateResults = await Promise.all(updateWisataPromises);
-  const updateError = updateResults.find(({ error }) => error);
-
-  if (updateError && updateError.error) {
-    throw updateError.error;
-  }
-
+  // With mapping table in place, renaming kategori only needs to update kategori_wisata.nama
   const { data, error } = await supabase
     .from(kategoriTable)
     .update({ nama: namaBaru })
@@ -160,19 +130,16 @@ async function deleteKategoriForAdmin(id) {
   if (kategoriError) throw kategoriError;
 
   const normalizedTarget = normalizeKategoriName(kategori.nama);
+  // Check mapping table usage (objek_wisata_kategori)
+  const { data: mappingUsage, error: mappingError } = await supabase
+    .from(mappingTable)
+    .select("id")
+    .eq("kategori_id", id)
+    .limit(1);
 
-  const { data: wisataData, error: wisataError } = await supabase
-    .from(wisataTable)
-    .select("id,kategori");
+  if (mappingError) throw mappingError;
 
-  if (wisataError) throw wisataError;
-
-  const isUsed = (wisataData || []).some((item) => {
-    const tokens = normalizeCategoryTokens(item.kategori);
-    return tokens.includes(normalizedTarget);
-  });
-
-  if (isUsed) {
+  if (mappingUsage && mappingUsage.length > 0) {
     throw new Error("Kategori masih dipakai oleh data wisata");
   }
 
