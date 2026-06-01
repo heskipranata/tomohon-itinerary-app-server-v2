@@ -223,6 +223,7 @@ function extractVisitListFromItinerary(itinerary) {
         parkingPaid: Boolean(visit.parkingPaid),
         parkingFee: visit.parkingFee ?? visit.biaya_parkir ?? null,
         biaya_parkir: visit.parkingFee ?? visit.biaya_parkir ?? null,
+        alternatives: visit.alternatives || [],
       });
     });
   });
@@ -1089,6 +1090,7 @@ async function getItineraryRecommendationCompact(req, res) {
                     ? visit.categories
                     : [],
                   operatingHours: visit?.operatingHours || null,
+                  alternatives: visit?.alternatives || [],
                 }))
               : [],
           }))

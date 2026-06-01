@@ -2,6 +2,8 @@ const express = require("express");
 
 const adminWisataController = require("../controllers/admin-wisata.controller");
 const { verifyToken, requireAdmin } = require("../middleware/auth.middleware");
+const uploadController = require("../controllers/upload.controller");
+const multerUpload = require("../config/upload.middleware");
 
 const router = express.Router();
 
@@ -24,5 +26,10 @@ router.patch(
   adminWisataController.updateAdminWisataPopularity,
 );
 router.delete("/admin/wisata/:id", adminWisataController.deleteAdminWisata);
+router.post(
+  "/admin/upload",
+  multerUpload.single("image"),
+  uploadController.uploadImage,
+);
 
 module.exports = router;

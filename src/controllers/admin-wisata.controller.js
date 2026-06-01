@@ -170,6 +170,7 @@ async function createAdminWisata(req, res) {
       data,
     });
   } catch (error) {
+    console.error("[Error Tambah Wisata]:", error);
     const isInputError = /wajib|valid/i.test(error.message);
 
     res.status(isInputError ? 400 : 500).json({
@@ -210,6 +211,7 @@ async function deleteAdminWisata(req, res) {
       data: { id },
     });
   } catch (error) {
+    console.error("[Error Hapus Wisata]:", error);
     const isInputError = /id|angka/i.test(error.message);
 
     res.status(isInputError ? 400 : 500).json({

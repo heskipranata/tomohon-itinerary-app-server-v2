@@ -167,6 +167,7 @@ function buildSimpleItineraryView(itineraryByDay) {
         facilities: visit.facilities || [],
         isLunchStop: Boolean(visit.isLunchStop),
         isAccommodationStop: Boolean(visit.isAccommodationStop),
+        alternatives: visit.alternatives || [],
       };
     }),
   }));
@@ -1391,7 +1392,7 @@ async function buildItineraryRecommendation(payload) {
             selectedDestinationIds,
             currentPoint,
           });
-          lunchRecommendations = buildTopFeatureRecommendations(lunchPool, 3);
+          lunchRecommendations = buildTopFeatureRecommendations(lunchPool, 4);
           bestCandidate = pickCandidateFromPool(lunchPool);
           if (!bestCandidate) {
             const lunchFallbackPool = buildLunchCandidatePool({
@@ -1402,7 +1403,7 @@ async function buildItineraryRecommendation(payload) {
             });
             lunchRecommendations = buildTopFeatureRecommendations(
               lunchFallbackPool,
-              3,
+              4,
             );
             bestCandidate = pickCandidateFromPool(lunchFallbackPool);
           }
@@ -1419,7 +1420,7 @@ async function buildItineraryRecommendation(payload) {
             selectedDestinationIds,
             currentPoint,
           });
-          lunchRecommendations = buildTopFeatureRecommendations(lunchPool, 3);
+          lunchRecommendations = buildTopFeatureRecommendations(lunchPool, 4);
           bestCandidate = pickCandidateFromPool(lunchPool);
           if (!bestCandidate) {
             const lunchFallbackPool = buildLunchCandidatePool({
@@ -1430,7 +1431,7 @@ async function buildItineraryRecommendation(payload) {
             });
             lunchRecommendations = buildTopFeatureRecommendations(
               lunchFallbackPool,
-              3,
+              4,
             );
             bestCandidate = pickCandidateFromPool(lunchFallbackPool);
           }
@@ -1527,6 +1528,11 @@ async function buildItineraryRecommendation(payload) {
         priorityReason: bestCandidate.almostClosing
           ? "Diprioritaskan karena hampir tutup"
           : "Dipilih karena kombinasi efisien jarak + waktu",
+        alternatives: isLunchStop
+          ? lunchRecommendations
+              .filter((alt) => alt.destinationId !== bestCandidate.candidate.id)
+              .slice(0, 3)
+          : [],
       };
 
       dayPlan.visits.push(visit);
@@ -1550,6 +1556,7 @@ async function buildItineraryRecommendation(payload) {
       if (isLunchStop) {
         lunchStopAdded = true;
         lunchStopVisitName = visit.destinationName;
+        lunchRecommendations = visit.alternatives;
       } else {
         totalTourismStopsSelected += 1;
         dailyTourismStopsSelected += 1;
@@ -1570,7 +1577,7 @@ async function buildItineraryRecommendation(payload) {
       });
       accommodationRecommendations = buildTopFeatureRecommendations(
         accommodationPool,
-        3,
+        4,
       );
       const selectedAccommodation = accommodationPool[0] || null;
 
@@ -1642,6 +1649,9 @@ async function buildItineraryRecommendation(payload) {
           isAccommodationStop: true,
           priorityReason: "Akomodasi dipilih terdekat untuk check-in",
           checkInOnly: true,
+          alternatives: accommodationRecommendations
+            .filter((alt) => alt.destinationId !== selectedAccommodation.id)
+            .slice(0, 3),
         };
 
         dayPlan.visits.push(accommodationVisit);
@@ -1650,6 +1660,7 @@ async function buildItineraryRecommendation(payload) {
         accommodationAdded = true;
         accommodationVisitName = accommodationVisit.destinationName;
         accommodationScheduledForTrip = true;
+        accommodationRecommendations = accommodationVisit.alternatives;
       }
     }
 
