@@ -125,7 +125,6 @@ function extractVisitListFromItinerary(itinerary) {
     if (!Array.isArray(day.visits)) return;
 
     day.visits.forEach((visit) => {
-      // visitOrder adalah urutan absolut yang terus bertambah lintas hari (1, 2, 3, dst.)
       visitOrder += 1;
 
       // 1. TANGKAP ID DENGAN AMAN: Dukung angka (25) maupun string ("tempat-makan-81")
@@ -1234,7 +1233,10 @@ async function getWisataForUserMinatByCategory(req, res) {
       nama: w.name || null,
       deskripsi: w.description || null,
       kategori: w.category || null,
+      kategoriLengkap: Array.isArray(w.categories) ? w.categories : [],
+      kategoriLabel: w.categoryLabel || null,
       gambar: w.imageUrl || w.image_url || null,
+      isOpen: w.isOpen !== false,
     }));
 
     res.status(200).json({

@@ -24,6 +24,37 @@ function getFirstAvailableValue(source, keys) {
   return null;
 }
 
+function parseBoolean(value) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "ya", "yes", "open", "buka"].includes(normalized)) {
+      return true;
+    }
+    if (["false", "0", "tidak", "no", "closed", "tutup"].includes(normalized)) {
+      return false;
+    }
+  }
+  return null;
+}
+
+function isWisataActive(raw) {
+  const isOpenRaw = getFirstAvailableValue(raw, [
+    "isOpen",
+    "is_open",
+    "is_buka",
+    "open",
+  ]);
+  const parsed = parseBoolean(isOpenRaw);
+
+  if (parsed === null) {
+    return true;
+  }
+
+  return parsed;
+}
+
 function mapWisataRecommendation(raw) {
   const categoryValue = getFirstAvailableValue(raw, [
     "kategori",
@@ -31,6 +62,7 @@ function mapWisataRecommendation(raw) {
     "jenis_wisata",
   ]);
   const categoryTokens = normalizeCategoryTokens(categoryValue);
+  const categoryLabel = categoryTokens.join(", ") || categoryValue || null;
 
   return {
     id: raw.id,
@@ -49,7 +81,10 @@ function mapWisataRecommendation(raw) {
     ]),
     locationLabel: getFirstAvailableValue(raw, ["lokasi", "alamat", "address"]),
     category: categoryTokens[0] || categoryValue,
+    categoryLabel,
+    categories: categoryTokens,
     categoryTokens,
+    isOpen: isWisataActive(raw),
     facilities: normalizeCategoryTokens(
       getFirstAvailableValue(raw, ["fasilitas", "facilities", "facility"]),
     ),
@@ -80,11 +115,14 @@ async function getWisataByPreferences(minatKategori) {
 
   const wisata = wisataRows
     .map(mapWisataRecommendation)
+    .filter((item) => item.isOpen !== false)
     .filter((item) =>
       categoryMatchesPreference(item.categoryTokens, preferences),
     )
     .sort((a, b) => {
-      const categoryComparison = a.category.localeCompare(b.category);
+      const categoryComparison = String(
+        a.categoryLabel || a.category || "",
+      ).localeCompare(String(b.categoryLabel || b.category || ""));
       if (categoryComparison !== 0) {
         return categoryComparison;
       }
@@ -118,13 +156,13 @@ async function getWisataByCategoryIds(categoryIds) {
     const kIds = Array.isArray(row.kategori_ids)
       ? row.kategori_ids.map((x) => String(x))
       : [];
-    return kIds.some((k) => ids.includes(String(k)));
+    return kIds.some((k) => ids.includes(String(k))) && isWisataActive(row);
   });
 
   const wisata = filtered.map(mapWisataRecommendation).sort((a, b) => {
-    const categoryComparison = String(a.category || "").localeCompare(
-      String(b.category || ""),
-    );
+    const categoryComparison = String(
+      a.categoryLabel || a.category || "",
+    ).localeCompare(String(b.categoryLabel || b.category || ""));
     if (categoryComparison !== 0) return categoryComparison;
     return String(a.name || "").localeCompare(String(b.name || ""));
   });

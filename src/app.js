@@ -13,14 +13,41 @@ const adminAkomodasiRoutes = require("./routes/admin-akomodasi.routes");
 const adminStatsRoutes = require("./routes/admin-stats.routes");
 
 const app = express();
-const frontendOrigin = process.env.FRONTEND_ORIGIN || "http://localhost:3000";
 
-app.use(
-  cors({
-    origin: frontendOrigin,
-    credentials: true,
-  }),
+const defaultAllowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "https://tomohon-itinerary-app.vercel.app",
+];
+
+const configuredOrigins = String(process.env.FRONTEND_ORIGIN || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const allowedOrigins = Array.from(
+  new Set([...defaultAllowedOrigins, ...configuredOrigins]),
 );
+
+const corsOptions = {
+  origin(origin, callback) {
+    // Allow non-browser requests (no Origin header), e.g. curl/Postman.
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error(`Origin ${origin} tidak diizinkan oleh CORS`));
+  },
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
 app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
 
