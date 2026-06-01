@@ -1041,6 +1041,11 @@ async function getItineraryRecommendationCompact(req, res) {
         ? data.itineraryByDay.map((dayPlan, dayIndex) => ({
             dayIndex,
             date: dayPlan?.date || null,
+            lunchStop: dayPlan?.lunchStop || null,
+            lunchRecommendations: dayPlan?.lunchRecommendations || [],
+            accommodationStop: dayPlan?.accommodationStop || null,
+            accommodationRecommendations:
+              dayPlan?.accommodationRecommendations || [],
             visits: Array.isArray(dayPlan?.visits)
               ? dayPlan.visits.map((visit, visitIndex) => ({
                   dayIndex,

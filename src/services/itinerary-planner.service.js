@@ -1734,7 +1734,7 @@ async function buildItineraryRecommendation(payload) {
   const totalDays = itineraryByDay.length;
 
   const normalizedItineraryByDay = itineraryByDay.map((dayPlan, dayIndex) => ({
-    // ...
+    ...dayPlan,
     visits: Array.isArray(dayPlan?.visits)
       ? dayPlan.visits.map((visit, visitIndex) => ({
           ...visit,
