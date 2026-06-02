@@ -15,9 +15,14 @@ function buildCreatePayload(body) {
     throw new Error("Body request tidak valid");
   }
 
+  const nama = body.nama || body.nama_kategori;
+
+  if (!nama || nama.trim() === "") {
+    throw new Error("Nama kategori wajib diisi");
+  }
+
   return {
-    nama: body.nama || body.nama_kategori,
-    nama_kategori: body.nama_kategori || body.nama,
+    nama: nama.trim(),
   };
 }
 
@@ -26,9 +31,14 @@ function buildUpdatePayload(body) {
     throw new Error("Body request tidak valid");
   }
 
+  const nama = body.nama || body.nama_kategori;
+
+  if (!nama || nama.trim() === "") {
+    throw new Error("Nama kategori tidak boleh kosong");
+  }
+
   return {
-    nama: body.nama || body.nama_kategori,
-    nama_kategori: body.nama_kategori || body.nama,
+    nama: nama.trim(),
   };
 }
 

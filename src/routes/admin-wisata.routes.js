@@ -9,6 +9,12 @@ const router = express.Router();
 
 router.use(verifyToken, requireAdmin);
 
+router.post(
+  "/admin/upload",
+  multerUpload.single("image"),
+  uploadController.uploadImage
+);
+
 router.get("/admin/wisata", adminWisataController.getAdminWisataList);
 router.get("/admin/wisata/:id", adminWisataController.getAdminWisataById);
 router.get(
@@ -26,10 +32,6 @@ router.patch(
   adminWisataController.updateAdminWisataPopularity,
 );
 router.delete("/admin/wisata/:id", adminWisataController.deleteAdminWisata);
-router.post(
-  "/admin/upload",
-  multerUpload.single("image"),
-  uploadController.uploadImage,
-);
+
 
 module.exports = router;

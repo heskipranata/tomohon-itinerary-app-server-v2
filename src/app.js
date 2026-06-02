@@ -18,6 +18,7 @@ const defaultAllowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
   "https://tomohon-itinerary-app.vercel.app",
+  "https://tomohon-itinerary-app-admin.vercel.app",
 ];
 
 const configuredOrigins = String(process.env.FRONTEND_ORIGIN || "")
