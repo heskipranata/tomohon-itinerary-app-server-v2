@@ -1244,6 +1244,10 @@ async function getWisataForUserMinatByCategory(req, res) {
       kategoriLabel: w.categoryLabel || null,
       gambar: w.imageUrl || w.image_url || null,
       isOpen: w.isOpen !== false,
+      latitude: w.latitude ?? w.lat ?? null,
+      longitude: w.longitude ?? w.lon ?? w.lng ?? null,
+      lat: w.lat ?? w.latitude ?? null,
+      lon: w.lon ?? w.longitude ?? w.lng ?? null,
     }));
 
     res.status(200).json({

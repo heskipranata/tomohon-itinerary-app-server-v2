@@ -88,6 +88,10 @@ function mapWisataRecommendation(raw) {
     facilities: normalizeCategoryTokens(
       getFirstAvailableValue(raw, ["fasilitas", "facilities", "facility"]),
     ),
+    latitude: getFirstAvailableValue(raw, ["latitude", "lat"]),
+    longitude: getFirstAvailableValue(raw, ["longitude", "lng", "lon"]),
+    lat: getFirstAvailableValue(raw, ["latitude", "lat"]),
+    lon: getFirstAvailableValue(raw, ["longitude", "lng", "lon"]),
     raw,
   };
 }

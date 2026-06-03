@@ -12,7 +12,7 @@ router.use(verifyToken, requireAdmin);
 router.post(
   "/admin/upload",
   multerUpload.single("image"),
-  uploadController.uploadImage
+  uploadController.uploadImage,
 );
 
 router.get("/admin/wisata", adminWisataController.getAdminWisataList);
@@ -32,6 +32,5 @@ router.patch(
   adminWisataController.updateAdminWisataPopularity,
 );
 router.delete("/admin/wisata/:id", adminWisataController.deleteAdminWisata);
-
 
 module.exports = router;
