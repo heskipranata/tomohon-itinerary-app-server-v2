@@ -23,6 +23,7 @@ function buildCreatePayload(body) {
 
   return {
     nama: nama.trim(),
+    deskripsi: body.deskripsi?.trim() || null,
   };
 }
 
@@ -39,6 +40,7 @@ function buildUpdatePayload(body) {
 
   return {
     nama: nama.trim(),
+    deskripsi: body.deskripsi?.trim() || null,
   };
 }
 

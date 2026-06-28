@@ -69,7 +69,7 @@ async function createKategoriForAdmin(payload) {
 
   const { data, error } = await supabase
     .from(kategoriTable)
-    .insert({ nama })
+    .insert({ nama, deskripsi: payload.deskripsi || null })
     .select("*")
     .single();
 
@@ -92,10 +92,8 @@ async function updateKategoriForAdmin(id, payload) {
 
   if (kategoriLamaError) throw kategoriLamaError;
 
-  if (kategoriLama.nama === namaBaru) {
-    return kategoriLama;
-  }
-
+  // Note: we don't early return on name match anymore because deskripsi might have changed
+  
   const { data: existingData, error: existingError } = await supabase
     .from(kategoriTable)
     .select("id")
@@ -104,14 +102,14 @@ async function updateKategoriForAdmin(id, payload) {
 
   if (existingError) throw existingError;
 
-  if (existingData && existingData.length > 0) {
+  if (existingData && existingData.length > 0 && existingData[0].id !== id) {
     throw new Error("Kategori sudah ada");
   }
 
   // With mapping table in place, renaming kategori only needs to update kategori_wisata.nama
   const { data, error } = await supabase
     .from(kategoriTable)
-    .update({ nama: namaBaru })
+    .update({ nama: namaBaru, deskripsi: payload.deskripsi || null })
     .eq("id", id)
     .select("*")
     .single();

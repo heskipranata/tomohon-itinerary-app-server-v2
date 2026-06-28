@@ -12,6 +12,7 @@ router.post("/auth/logout", verifyToken, authController.logout);
 
 router.post("/admin/register", authController.registerAdmin);
 router.post("/admin/login", authController.loginAdmin);
+router.patch("/admin/profile", verifyToken, authController.updateAdminProfile);
 router.post("/admin/logout", verifyToken, authController.logout);
 
 module.exports = router;

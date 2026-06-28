@@ -269,6 +269,45 @@ async function updateUserMinatKategori(userId, minatKategori) {
   return data;
 }
 
+async function updateAdminProfile(userId, { nama, email, password }) {
+  const id = validateUserId(userId);
+  const normalizedNama = normalizeText(nama);
+  const normalizedEmail = normalizeText(email).toLowerCase();
+  const normalizedPassword = normalizeText(password);
+
+  if (!normalizedNama || !normalizedEmail) {
+    throw new Error("Nama dan email wajib diisi");
+  }
+
+  // Check email conflict
+  const existingByEmail = await findUserByField("email", normalizedEmail);
+  if (existingByEmail.length > 0 && existingByEmail[0].id !== id) {
+    throw new Error("Email sudah terdaftar oleh pengguna lain");
+  }
+
+  const updateData = {
+    nama: normalizedNama,
+    email: normalizedEmail,
+  };
+
+  if (normalizedPassword) {
+    updateData.password = hashPassword(normalizedPassword);
+  }
+
+  const { data, error } = await supabase
+    .from("users")
+    .update(updateData)
+    .eq("id", id)
+    .select("id, nama, email, role")
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "User tidak ditemukan");
+  }
+
+  return data;
+}
+
 module.exports = {
   registerUser,
   loginUser,
@@ -276,4 +315,5 @@ module.exports = {
   registerAdmin,
   getUserProfileById,
   updateUserMinatKategori,
+  updateAdminProfile,
 };

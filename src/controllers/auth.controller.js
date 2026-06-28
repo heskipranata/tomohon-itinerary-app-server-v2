@@ -199,6 +199,33 @@ async function logout(req, res) {
   }
 }
 
+async function updateAdminProfile(req, res) {
+  try {
+    const { nama, email, password } = req.body;
+
+    const admin = await authService.updateAdminProfile(req.user.id, {
+      nama,
+      email,
+      password,
+    });
+
+    res.json({
+      message: "Profil admin berhasil diperbarui",
+      admin: {
+        id: admin.id,
+        nama: admin.nama,
+        email: admin.email,
+        role: admin.role,
+      },
+    });
+  } catch (err) {
+    const isInputError = /wajib|terdaftar|salah|valid/i.test(err.message);
+    res.status(isInputError ? 400 : 500).json({
+      message: err.message,
+    });
+  }
+}
+
 module.exports = {
   registerUser,
   loginUser,
@@ -207,4 +234,5 @@ module.exports = {
   getProfile,
   updateMinatKategori,
   logout,
+  updateAdminProfile,
 };
