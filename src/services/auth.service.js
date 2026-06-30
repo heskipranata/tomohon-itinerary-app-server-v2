@@ -251,13 +251,38 @@ async function getUserProfileById(userId) {
   return data;
 }
 
-async function updateUserMinatKategori(userId, minatKategori) {
+async function updateUserProfile(userId, { nama, email, minatKategori }) {
   const id = validateUserId(userId);
-  const normalizedMinatKategori = normalizeMinatKategori(minatKategori);
+  const updateData = {};
+
+  if (nama !== undefined) {
+    const normalizedNama = normalizeText(nama);
+    if (!normalizedNama) throw new Error("Nama tidak boleh kosong");
+    updateData.nama = normalizedNama;
+  }
+
+  if (email !== undefined) {
+    const normalizedEmail = normalizeText(email).toLowerCase();
+    if (!normalizedEmail) throw new Error("Email tidak boleh kosong");
+    
+    const existingByEmail = await findUserByField("email", normalizedEmail);
+    if (existingByEmail.length > 0 && existingByEmail[0].id !== id) {
+      throw new Error("Email sudah terdaftar oleh pengguna lain");
+    }
+    updateData.email = normalizedEmail;
+  }
+
+  if (minatKategori !== undefined) {
+    updateData.minat_kategori = normalizeMinatKategori(minatKategori);
+  }
+
+  if (Object.keys(updateData).length === 0) {
+    return await getUserProfileById(id);
+  }
 
   const { data, error } = await supabase
     .from("users")
-    .update({ minat_kategori: normalizedMinatKategori })
+    .update(updateData)
     .eq("id", id)
     .select("id, nama, email, role, minat_kategori, created_at, updated_at")
     .single();
@@ -314,6 +339,6 @@ module.exports = {
   loginAdmin,
   registerAdmin,
   getUserProfileById,
-  updateUserMinatKategori,
+  updateUserProfile,
   updateAdminProfile,
 };

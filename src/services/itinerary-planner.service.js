@@ -86,9 +86,9 @@ const CATEGORY_VISIT_DURATION_RULES = {
     label: "gunung",
   },
   default: {
-    minMinutes: 180,
-    maxMinutes: 300,
-    defaultMinutes: 240,
+    minMinutes: 150, // 2.5 jam
+    maxMinutes: 240, // 4 jam
+    defaultMinutes: 210, // 3.5 jam
     label: "umum",
   },
 };
@@ -119,6 +119,7 @@ const {
 });
 
 function parseNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -126,7 +127,7 @@ function parseNumber(value) {
 function formatDateToClockText(dateValue) {
   if (!dateValue) return null;
   const date = new Date(dateValue);
-  return formatMinutesToClock(date.getHours() * 60 + date.getMinutes());
+  return formatMinutesToClock(date.getUTCHours() * 60 + date.getUTCMinutes());
 }
 
 function normalizeTextListTokens(value) {
@@ -205,7 +206,7 @@ function distanceToTravelMinutesSafe(distanceKm, speedKmh) {
 
 function buildDateByMinutes(baseDate, minutesFromMidnight) {
   const date = new Date(baseDate);
-  date.setHours(
+  date.setUTCHours(
     Math.floor(minutesFromMidnight / 60),
     minutesFromMidnight % 60,
     0,
@@ -442,23 +443,26 @@ function detectCategoryVisitRule(categoryValue) {
   return CATEGORY_VISIT_DURATION_RULES.default;
 }
 
-function resolveVisitDurationMinutes(destination, mode) {
+function resolveVisitDurationMinutes(destination, mode, destinationLimit) {
   const rule = detectCategoryVisitRule(destination.category);
   const rawDuration = destination.visitDurationMinutes;
+  
+  const isUnlimited = destinationLimit === null || destinationLimit === undefined;
+  const targetKategoriDuration = isUnlimited ? rule.minMinutes : rule.defaultMinutes;
 
   if (mode === "kategori")
-    return { minutes: rule.defaultMinutes, source: `rule-${rule.label}` };
+    return { minutes: targetKategoriDuration, source: `rule-${rule.label}` };
 
   if (mode === "data") {
     return {
-      minutes: rawDuration || rule.defaultMinutes,
+      minutes: rawDuration || targetKategoriDuration,
       source: rawDuration ? "data-csv" : `fallback-rule-${rule.label}`,
     };
   }
 
   if (!rawDuration)
     return {
-      minutes: rule.defaultMinutes,
+      minutes: targetKategoriDuration,
       source: `fallback-rule-${rule.label}`,
     };
   const clamped = Math.min(
@@ -968,6 +972,7 @@ function buildTopFeatureRecommendations(poolCandidates, limit = 3) {
     destinationId: candidate.id,
     destinationName: candidate.name,
     category: candidate.category,
+    categories: candidate.categoryTokens || candidate.categories || [],
     rating: candidate.rating ?? null,
     phoneNumber: candidate.phoneNumber || null,
     sourceType: candidate.sourceType || wisataTable,
@@ -975,6 +980,11 @@ function buildTopFeatureRecommendations(poolCandidates, limit = 3) {
     distanceKm: Number((candidate.distanceFromCurrentKm || 0).toFixed(2)),
     operatingHours:
       candidate.operatingHoursText || candidate.operatingHours?.text || null,
+    imageUrl: candidate.imageUrl || null,
+    ticketPrice: candidate.ticketPrice ?? null,
+    price: candidate.price ?? candidate.ticketPrice ?? null,
+    description: candidate.description || null,
+    facilities: candidate.facilities || [],
   }));
 }
 
@@ -1226,6 +1236,7 @@ async function buildItineraryRecommendation(payload) {
       const durationPolicy = resolveVisitDurationMinutes(
         item,
         visitDurationMode,
+        destinationLimit,
       );
       return {
         ...item,
@@ -1462,6 +1473,23 @@ async function buildItineraryRecommendation(payload) {
           lunchWindow,
         );
       const isAccommodationStop = false;
+
+      // FIX: Tambahkan waktu ekstra khusus untuk makan siang jika lokasi digabung
+      // Hanya terapkan jika ini adalah wisata utama (minVisitDurationMinutes > 100). Restoran murni durasinya memang sudah 90 menit.
+      if (isLunchStop && bestCandidate.candidate.minVisitDurationMinutes > 100) {
+        const extraLunchMinutes = 60; // 1 Jam ekstra untuk makan siang
+        bestCandidate.visitDurationMinutes += extraLunchMinutes;
+        bestCandidate.finishTime = new Date(bestCandidate.finishTime.getTime() + extraLunchMinutes * 60000);
+        bestCandidate.totalConsumedMinutes += extraLunchMinutes;
+        
+        // Pastikan tidak melewatinya jam operasional tutup (18:00)
+        if (bestCandidate.finishTime > dayEnd) {
+          const over = (bestCandidate.finishTime.getTime() - dayEnd.getTime()) / 60000;
+          bestCandidate.visitDurationMinutes -= over;
+          bestCandidate.totalConsumedMinutes -= over;
+          bestCandidate.finishTime = new Date(dayEnd.getTime());
+        }
+      }
 
       if (tourismLimitReached && !isLunchStop && !isAccommodationStop) break;
 
@@ -1992,6 +2020,11 @@ async function buildItineraryReplacementPreview(payload) {
           extraDistanceKm <= 0
             ? "Lebih efisien atau setara"
             : "Paling minim gangguan rute",
+        imageUrl: candidate.imageUrl,
+        ticketPrice: candidate.ticketPrice,
+        facilities: candidate.facilities,
+        rating: candidate.raw?.rating || candidate.raw?.rating_bintang || null,
+        categories: candidate.categoryTokens,
       };
     })
     .sort((a, b) => a.score - b.score)
@@ -2321,10 +2354,262 @@ async function applyItineraryReplacement(payload) {
     updatedDraft,
   };
 }
+async function applyItineraryDayReorder(payload) {
+  const draft = extractDraftItinerary(payload);
+  const dayIndex = parseNumber(payload.dayIndex);
+  
+  if (dayIndex === null || dayIndex < 0 || dayIndex >= draft.itineraryByDay.length) {
+    throw new Error("dayIndex tidak valid");
+  }
+
+  const speed = parseNumber(payload.averageSpeedKmh) || draft.summary?.averageSpeedKmh || DEFAULT_TRAVEL_SPEED_KMH;
+  
+  const updatedItineraryByDay = JSON.parse(JSON.stringify(draft.itineraryByDay));
+  const dayPlan = updatedItineraryByDay[dayIndex];
+
+  // 1. Tentukan titik mulai hari ini
+  let startLocation = draft.summary?.startLocation || draft.route?.startLocation;
+  if (dayIndex > 0) {
+    const prevDay = updatedItineraryByDay[dayIndex - 1];
+    const prevLastVisit = prevDay.visits[prevDay.visits.length - 1];
+    if (prevLastVisit) {
+      startLocation = {
+        latitude: prevLastVisit.location.latitude,
+        longitude: prevLastVisit.location.longitude,
+      };
+    }
+  }
+
+  if (!startLocation) {
+    startLocation = {
+       latitude: dayPlan.visits[0]?.location.latitude,
+       longitude: dayPlan.visits[0]?.location.longitude,
+    };
+  }
+
+  // 2. Bagi menjadi segmen agar makan siang dan akomodasi tidak pindah urutan logisnya
+  const segments = [];
+  let currentSegment = [];
+  
+  for (const visit of dayPlan.visits) {
+    if (visit.isLunchStop || visit.isAccommodationStop || visit.sourceType === "akomodasi") {
+      if (currentSegment.length > 0) {
+        segments.push({ type: 'normal', visits: currentSegment });
+        currentSegment = [];
+      }
+      segments.push({ type: 'fixed', visits: [visit] });
+    } else {
+      currentSegment.push(visit);
+    }
+  }
+  if (currentSegment.length > 0) {
+    segments.push({ type: 'normal', visits: currentSegment });
+  }
+
+  // 3. Urutkan tiap segmen normal (Nearest Neighbor)
+  let currentPoint = startLocation;
+  const reorderedVisits = [];
+  
+  for (const segment of segments) {
+    if (segment.type === 'fixed') {
+      reorderedVisits.push(segment.visits[0]);
+      currentPoint = segment.visits[0].location;
+    } else {
+      let unvisited = [...segment.visits];
+      while(unvisited.length > 0) {
+        let nearestIdx = -1;
+        let minDistance = Infinity;
+        for (let i = 0; i < unvisited.length; i++) {
+          const dist = haversineDistanceKm(currentPoint, unvisited[i].location);
+          if (dist < minDistance) {
+            minDistance = dist;
+            nearestIdx = i;
+          }
+        }
+        const nearest = unvisited.splice(nearestIdx, 1)[0];
+        reorderedVisits.push(nearest);
+        currentPoint = nearest.location;
+      }
+    }
+  }
+
+  dayPlan.visits = reorderedVisits;
+
+  // 4. Bangun ulang jam
+  updatedItineraryByDay[dayIndex] = rebuildDaySchedule(dayPlan, startLocation, speed);
+
+  // 5. Panggil OSRM
+  await applyRoadMetricsToItinerary({
+    itineraryByDay: updatedItineraryByDay,
+    userPoint: draft.summary?.startLocation || draft.route?.startLocation,
+    speed
+  });
+
+  // 6. Hitung ulang total waktu
+  const totalAvailableMinutes = updatedItineraryByDay.reduce(
+    (acc, day) => acc + (day.activeWindow?.durationMinutes || 0),
+    0,
+  );
+  const totalUsedMinutes = updatedItineraryByDay.reduce(
+    (acc, day) => acc + (day.usedMinutes || 0),
+    0,
+  );
+
+  const updatedDraft = {
+    ...draft,
+    itineraryByDay: updatedItineraryByDay,
+    simpleItinerary: buildSimpleItineraryView(updatedItineraryByDay),
+    recommendedDestinations: updatedItineraryByDay.flatMap(day => day.visits),
+    route: {
+      ...draft.route,
+      orderedStops: updatedItineraryByDay.flatMap(day => day.visits).map((stop, index) => ({
+        order: index + 1,
+        destinationId: stop.destinationId,
+        destinationName: stop.destinationName,
+        latitude: stop.location.latitude,
+        longitude: stop.location.longitude,
+      })),
+    },
+    summary: {
+      ...draft.summary,
+      usedMinutes: totalUsedMinutes,
+      remainingMinutes: Math.max(0, Math.floor(totalAvailableMinutes - totalUsedMinutes)),
+    }
+  };
+
+  return {
+    message: "Rute hari ini berhasil diurutkan ulang",
+    updatedDraft,
+  };
+}
+
+async function applyItineraryAllDaysReorder(payload) {
+  const draft = extractDraftItinerary(payload);
+  const speed = parseNumber(payload.averageSpeedKmh) || draft.summary?.averageSpeedKmh || DEFAULT_TRAVEL_SPEED_KMH;
+  const updatedItineraryByDay = JSON.parse(JSON.stringify(draft.itineraryByDay));
+
+  for (let dayIndex = 0; dayIndex < updatedItineraryByDay.length; dayIndex++) {
+    const dayPlan = updatedItineraryByDay[dayIndex];
+
+    // 1. Tentukan titik mulai hari ini
+    let startLocation = draft.summary?.startLocation || draft.route?.startLocation;
+    if (dayIndex > 0) {
+      const prevDay = updatedItineraryByDay[dayIndex - 1];
+      const prevLastVisit = prevDay.visits[prevDay.visits.length - 1];
+      if (prevLastVisit) {
+        startLocation = {
+          latitude: prevLastVisit.location.latitude,
+          longitude: prevLastVisit.location.longitude,
+        };
+      }
+    }
+    if (!startLocation) {
+      startLocation = {
+         latitude: dayPlan.visits[0]?.location.latitude,
+         longitude: dayPlan.visits[0]?.location.longitude,
+      };
+    }
+
+    // 2. Bagi menjadi segmen agar makan siang dan akomodasi tidak pindah urutan logisnya
+    const segments = [];
+    let currentSegment = [];
+    for (const visit of dayPlan.visits) {
+      if (visit.isLunchStop || visit.isAccommodationStop || visit.sourceType === "akomodasi") {
+        if (currentSegment.length > 0) {
+          segments.push({ type: 'normal', visits: currentSegment });
+          currentSegment = [];
+        }
+        segments.push({ type: 'fixed', visits: [visit] });
+      } else {
+        currentSegment.push(visit);
+      }
+    }
+    if (currentSegment.length > 0) {
+      segments.push({ type: 'normal', visits: currentSegment });
+    }
+
+    // 3. Urutkan tiap segmen normal (Nearest Neighbor)
+    let currentPoint = startLocation;
+    const reorderedVisits = [];
+    for (const segment of segments) {
+      if (segment.type === 'fixed') {
+        reorderedVisits.push(segment.visits[0]);
+        currentPoint = segment.visits[0].location;
+      } else {
+        let unvisited = [...segment.visits];
+        while(unvisited.length > 0) {
+          let nearestIdx = -1;
+          let minDistance = Infinity;
+          for (let i = 0; i < unvisited.length; i++) {
+            const dist = haversineDistanceKm(currentPoint, unvisited[i].location);
+            if (dist < minDistance) {
+              minDistance = dist;
+              nearestIdx = i;
+            }
+          }
+          const nearest = unvisited.splice(nearestIdx, 1)[0];
+          reorderedVisits.push(nearest);
+          currentPoint = nearest.location;
+        }
+      }
+    }
+
+    dayPlan.visits = reorderedVisits;
+
+    // 4. Bangun ulang jam
+    updatedItineraryByDay[dayIndex] = rebuildDaySchedule(dayPlan, startLocation, speed);
+  }
+
+  // 5. Panggil OSRM untuk keseluruhan itinerary
+  await applyRoadMetricsToItinerary({
+    itineraryByDay: updatedItineraryByDay,
+    userPoint: draft.summary?.startLocation || draft.route?.startLocation,
+    speed
+  });
+
+  // 6. Hitung ulang total waktu
+  const totalAvailableMinutes = updatedItineraryByDay.reduce(
+    (acc, day) => acc + (day.activeWindow?.durationMinutes || 0),
+    0,
+  );
+  const totalUsedMinutes = updatedItineraryByDay.reduce(
+    (acc, day) => acc + (day.usedMinutes || 0),
+    0,
+  );
+
+  const updatedDraft = {
+    ...draft,
+    itineraryByDay: updatedItineraryByDay,
+    simpleItinerary: buildSimpleItineraryView(updatedItineraryByDay),
+    recommendedDestinations: updatedItineraryByDay.flatMap(day => day.visits),
+    route: {
+      ...draft.route,
+      orderedStops: updatedItineraryByDay.flatMap(day => day.visits).map((stop, index) => ({
+        order: index + 1,
+        destinationId: stop.destinationId,
+        destinationName: stop.destinationName,
+        latitude: stop.location.latitude,
+        longitude: stop.location.longitude,
+      })),
+    },
+    summary: {
+      ...draft.summary,
+      usedMinutes: totalUsedMinutes,
+      remainingMinutes: Math.max(0, Math.floor(totalAvailableMinutes - totalUsedMinutes)),
+    }
+  };
+
+  return {
+    message: "Seluruh rute berhasil diurutkan ulang",
+    updatedDraft,
+  };
+}
 
 module.exports = {
   buildItineraryRecommendation,
   buildItineraryReplacementPreview,
   applyItineraryReplacement,
+  applyItineraryDayReorder,
+  applyItineraryAllDaysReorder,
   getAvailableWisataCategories,
 };

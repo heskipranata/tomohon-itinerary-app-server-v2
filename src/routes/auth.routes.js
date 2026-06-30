@@ -7,7 +7,7 @@ const router = express.Router();
 router.post("/auth/register", authController.registerUser);
 router.post("/auth/login", authController.loginUser);
 router.get("/auth/profile", verifyToken, authController.getProfile);
-router.patch("/auth/profile", verifyToken, authController.updateMinatKategori);
+router.patch("/auth/profile", verifyToken, authController.updateUserProfile);
 router.post("/auth/logout", verifyToken, authController.logout);
 
 router.post("/admin/register", authController.registerAdmin);

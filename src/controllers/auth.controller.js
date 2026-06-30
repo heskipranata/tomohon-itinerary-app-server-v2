@@ -126,16 +126,16 @@ async function getProfile(req, res) {
   }
 }
 
-async function updateMinatKategori(req, res) {
+async function updateUserProfile(req, res) {
   try {
-    const { minatKategori } = req.body;
-    const user = await authService.updateUserMinatKategori(
+    const { nama, email, minatKategori } = req.body;
+    const user = await authService.updateUserProfile(
       req.user.id,
-      minatKategori,
+      { nama, email, minatKategori },
     );
 
     res.json({
-      message: "Minat kategori berhasil diperbarui",
+      message: "Profil berhasil diperbarui",
       user: {
         id: user.id,
         nama: user.nama,
@@ -232,7 +232,7 @@ module.exports = {
   loginAdmin,
   registerAdmin,
   getProfile,
-  updateMinatKategori,
+  updateUserProfile,
   logout,
   updateAdminProfile,
 };

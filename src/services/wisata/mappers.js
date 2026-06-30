@@ -11,6 +11,7 @@ function buildWisataMappers({
   defaultAccommodationVisitDurationMinutes = 60,
 }) {
   function parseNumber(value) {
+    if (value === null || value === undefined || value === "") return null;
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
   }
@@ -64,7 +65,7 @@ function buildWisataMappers({
     const category = getFirstAvailableValue(raw, ["kategori", "category", "jenis_wisata"]);
     const name = getFirstAvailableValue(raw, ["nama_objek_wisata", "nama", "name", "nama_destinasi"]);
     const description = getFirstAvailableValue(raw, ["deskripsi", "description"]);
-    const ticketPrice = parseNumber(getFirstAvailableValue(raw, ["tiket_masuk", "ticket_price", "price"]));
+    const ticketPrice = parseNumber(getFirstAvailableValue(raw, ["tiket_masuk", "ticket_price", "price", "harga", "harga_tiket"]));
     const imageUrl = getFirstAvailableValue(raw, ["url_foto", "image_url", "image", "foto"]);
     const locationLabel = getFirstAvailableValue(raw, ["lokasi", "alamat", "address"]);
     const operatingHoursRaw = getFirstAvailableValue(raw, ["jam_operasional", "operating_hours", "opening_hours"]);

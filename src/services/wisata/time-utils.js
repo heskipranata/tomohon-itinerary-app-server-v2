@@ -75,7 +75,7 @@ function parseOperatingHours(value) {
 
 function buildDateAtMinutes(baseDate, totalMinutes) {
   const date = new Date(baseDate);
-  date.setHours(Math.floor(totalMinutes / 60), totalMinutes % 60, 0, 0);
+  date.setUTCHours(Math.floor(totalMinutes / 60), totalMinutes % 60, 0, 0);
   return date;
 }
 
@@ -120,14 +120,14 @@ function alignDateToTimeSlot(
   const aligned = new Date(date);
   aligned.setSeconds(0, 0);
 
-  const totalMinutes = aligned.getHours() * 60 + aligned.getMinutes();
+  const totalMinutes = aligned.getUTCHours() * 60 + aligned.getUTCMinutes();
   const roundedMinutes =
     mode === "down"
       ? roundDownToTimeSlot(totalMinutes, slotMinutes)
       : roundUpToTimeSlot(totalMinutes, slotMinutes);
 
-  aligned.setHours(0, 0, 0, 0);
-  aligned.setMinutes(roundedMinutes);
+  aligned.setUTCHours(0, 0, 0, 0);
+  aligned.setUTCMinutes(roundedMinutes);
   return aligned;
 }
 
@@ -188,17 +188,17 @@ function buildDailyActiveWindowsFromForm(dayCount, startClock, endClock, startDa
   if (isNaN(baseDate.getTime())) {
       baseDate = new Date();
   }
-  baseDate.setHours(0, 0, 0, 0);
+  baseDate.setUTCHours(0, 0, 0, 0);
 
   for (let dayOffset = 0; dayOffset < normalizedDays; dayOffset += 1) {
     const date = new Date(baseDate);
     date.setDate(baseDate.getDate() + dayOffset);
 
     const start = new Date(date);
-    start.setHours(Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
+    start.setUTCHours(Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
 
     const end = new Date(date);
-    end.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 0, 0);
+    end.setUTCHours(Math.floor(endMinutes / 60), endMinutes % 60, 0, 0);
 
     windows.push({
       date: formatLocalDate(date),

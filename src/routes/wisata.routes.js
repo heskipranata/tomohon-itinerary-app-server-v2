@@ -28,6 +28,18 @@ router.post(
   wisataController.confirmItineraryReplacement,
 );
 
+router.post(
+  "/objek-wisata/rekomendasi-itinerary/reorder-day",
+  verifyToken,
+  wisataController.reorderItineraryDay,
+);
+
+router.post(
+  "/objek-wisata/rekomendasi-itinerary/reorder-all",
+  verifyToken,
+  wisataController.reorderItineraryAllDays,
+);
+
 router.get(
   "/rencana-perjalanan",
   verifyToken,
